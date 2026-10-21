@@ -5,7 +5,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "OctoLight-Home-Assistant"
+name = "OctoPrint-HA-Light-Control"
 version = "0.3.0"
 description = "Home Assistant lights and switches, brightness, colour and print status automation for OctoPrint."
 authors = [
@@ -21,7 +21,7 @@ dynamic = [
 ]
 
 [project.entry-points."octoprint.plugin"]
-octolightHA = "octoprint_octolightHA"
+ha_light_control = "octoprint_ha_light_control"
 
 [project.urls]
 Homepage = "https://github.com/idontwantfame/OctoLight_Home-Assistant"
@@ -44,8 +44,8 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = [
-    "octoprint_octolightHA",
-    "octoprint_octolightHA.*",
+    "octoprint_ha_light_control",
+    "octoprint_ha_light_control.*",
 ]
 
 [tool.pytest.ini_options]

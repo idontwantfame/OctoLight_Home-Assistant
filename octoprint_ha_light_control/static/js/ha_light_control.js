@@ -1,6 +1,6 @@
 $(function () {
     "use strict";
-    function OctolightHAViewModel(parameters) {
+    function HALightControlViewModel(parameters) {
         var self = this;
         self.settingsViewModel = parameters[0];
         self.loginState = parameters[1];
@@ -22,7 +22,7 @@ $(function () {
             });
         });
         self.selectedEntity.subscribe(function (entity) {
-            if (entity && self.settings) self.settings.plugins.octolightHA.entity_id(entity.entity_id);
+            if (entity && self.settings) self.settings.plugins.ha_light_control.entity_id(entity.entity_id);
         });
         self.onBeforeBinding = function () {
             self.settings = self.settingsViewModel.settings;
@@ -39,7 +39,7 @@ $(function () {
                 row.capabilities(entity.capabilities || {});
                 var attrs = entity.attributes || {};
                 var focused = document.activeElement;
-                var editing = focused && focused.tagName === "INPUT" && $(focused).closest("[data-octolight-entity]").attr("data-octolight-entity") === entity.entity_id;
+                var editing = focused && focused.tagName === "INPUT" && $(focused).closest("[data-ha-light-control-entity]").attr("data-ha-light-control-entity") === entity.entity_id;
                 if (!editing) {
                     row.brightnessValue(Math.max(1, Math.round((attrs.brightness || 255) / 255 * 100)));
                     var channels = attrs.rgb_color || [255, 255, 255];
@@ -51,13 +51,13 @@ $(function () {
         };
         self.failure = function (xhr) {
             var error = xhr.responseJSON && xhr.responseJSON.error;
-            self.message(error || "Could not contact OctoLight. Check your connection and permissions.");
-            new PNotify({title: "OctoLight Home Assistant", text: self.message(), type: "error"});
+            self.message(error || "Could not contact Home Assistant Light Control. Check your connection and permissions.");
+            new PNotify({title: "Home Assistant Light Control", text: self.message(), type: "error"});
         };
         self.command = function (command, data) {
             self.busy(true);
             self.message("");
-            return OctoPrint.simpleApiCommand("octolightHA", command, data || {})
+            return OctoPrint.simpleApiCommand("ha_light_control", command, data || {})
                 .done(function (result) {
                     if (command !== "discover" && command !== "test") self.apply(result);
                 }).fail(self.failure).always(function () { self.busy(false); });
@@ -73,7 +73,7 @@ $(function () {
             if (self.canControl() && !self.busy()) self.command("setLight", {entity_id: entity.entity_id, color: entity.colorValue()});
         };
         self.connection = function () {
-            var config = self.settings.plugins.octolightHA;
+            var config = self.settings.plugins.ha_light_control;
             return {address: config.address(), api_key: config.api_key(),
                 verify_certificate: config.verify_certificate(), entity_id: config.entity_id()};
         };
@@ -81,8 +81,8 @@ $(function () {
             self.command("discover", self.connection()).done(function (data) {
                 self.discovered(data.entities || []);
                 // Only auto-fill when unambiguous; never guess between similarly named devices.
-                if (!self.settings.plugins.octolightHA.entity_id() && data.entities.length === 1) {
-                    self.settings.plugins.octolightHA.entity_id(data.entities[0].entity_id);
+                if (!self.settings.plugins.ha_light_control.entity_id() && data.entities.length === 1) {
+                    self.settings.plugins.ha_light_control.entity_id(data.entities[0].entity_id);
                 }
                 self.message("Found " + data.entities.length + " controllable entities. Search by name or ID.");
                 self.refresh();
@@ -93,29 +93,36 @@ $(function () {
                 self.message("Connection successful. Entity state: " + data.state);
             });
         };
+        self.importLegacy = function () {
+            self.command("importLegacy").done(function () {
+                self.settingsViewModel.requestData();
+                self.message("Imported OctoLight settings. Use @HALIGHT in G-code and the ha_light_control API endpoint.");
+                self.refresh();
+            });
+        };
         self.addEntity = function () {
-            self.settings.plugins.octolightHA.additionalEntities.push({entity_id: ko.observable(""),
+            self.settings.plugins.ha_light_control.additionalEntities.push({entity_id: ko.observable(""),
                 icon: ko.observable("lightbulb"), turnOnPrintStart: ko.observable(false),
                 turnOffPrintEnd: ko.observable(false), turnOffPrintDelay: ko.observable(0),
                 turnOffPrintFailure: ko.observable(false), turnOffPrintCancellation: ko.observable(false)});
         };
         self.removeEntity = function (entity) {
-            self.settings.plugins.octolightHA.additionalEntities.remove(entity);
+            self.settings.plugins.ha_light_control.additionalEntities.remove(entity);
         };
         self.refresh = function () {
-            if (self.loginState.isUser()) OctoPrint.simpleApiGet("octolightHA").done(self.apply);
+            if (self.loginState.isUser()) OctoPrint.simpleApiGet("ha_light_control").done(self.apply);
         };
         self.onStartupComplete = self.refresh;
         self.onUserLoggedIn = self.refresh;
         self.onUserLoggedOut = function () { self.entities([]); self.rows = {}; };
         self.onDataUpdaterReconnect = self.refresh;
         self.onDataUpdaterPluginMessage = function (plugin, data) {
-            if (plugin !== "octolightHA" || !self.loginState.isUser()) return;
+            if (plugin !== "ha_light_control" || !self.loginState.isUser()) return;
             if (data.settingsError) self.failure({responseJSON: {error: data.settingsError}});
             self.apply(data);
         };
     }
-    OCTOPRINT_VIEWMODELS.push({construct: OctolightHAViewModel,
+    OCTOPRINT_VIEWMODELS.push({construct: HALightControlViewModel,
         dependencies: ["settingsViewModel", "loginStateViewModel", "accessViewModel"],
-        elements: ["#navbar_plugin_octolightHA", "#settings_plugin_octolightHA"]});
+        elements: ["#navbar_plugin_ha_light_control", "#settings_plugin_ha_light_control"]});
 });

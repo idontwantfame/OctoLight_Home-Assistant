@@ -8,7 +8,7 @@ tasks:
     desc: Check Python and JavaScript
     cmds:
       - ruff check .
-      - node --check octoprint_octolightHA/static/js/octolightHA.js
+      - node --check octoprint_ha_light_control/static/js/ha_light_control.js
   build:
     desc: Build isolated source and wheel distributions
     cmds:

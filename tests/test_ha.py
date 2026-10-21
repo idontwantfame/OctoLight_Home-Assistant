@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from octoprint_octolightHA.ha import HomeAssistant, HomeAssistantError
+from octoprint_ha_light_control.ha import HomeAssistant, HomeAssistantError
 
 
 @pytest.fixture

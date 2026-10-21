@@ -1,7 +1,7 @@
 import pytest
 
-from octoprint_octolightHA.gcode import parse_atcommand
-from octoprint_octolightHA.ha import HomeAssistantError
+from octoprint_ha_light_control.gcode import parse_atcommand
+from octoprint_ha_light_control.ha import HomeAssistantError
 
 
 @pytest.mark.parametrize(

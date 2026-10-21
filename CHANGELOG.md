@@ -2,12 +2,14 @@
 
 ## 0.3.0
 
+- Establish the separate Home Assistant Light Control identity: `ha_light_control`, `octoprint_ha_light_control`, and `OctoPrint-HA-Light-Control`.
+- Use `@HALIGHT` host commands and `/api/plugin/ha_light_control`; add explicit, non-destructive settings import from a disabled OctoLight installation.
 - Search Home Assistant entities by name or ID, fill unambiguous selections and test unsaved connection settings.
 - Poll and broadcast external state changes; report missing entities, rejected tokens, malformed responses, TLS and network errors.
 - Replace GET side effects with authenticated, permission-checked POST controls. Legacy GET mutation callers must migrate.
 - Add independent additional entities, configurable navbar icons and live brightness/colour menus.
 - Add optional turn-on appearance, print status colours and native short error flashes.
-- Add opt-in `@OCTOLIGHT` on/off/toggle/set host commands, including brightness, colour and short flashes, for OctoDash/G-code.
+- Add opt-in `@HALIGHT` on/off/toggle/set host commands, including brightness, colour and short flashes, for OctoDash/G-code.
 - Fix completion timers across new prints, manual controls, reconfiguration, shutdown and stale callbacks.
 - Remove token logging; mask and restrict stored credentials. Enable TLS verification for new configurations while migrating existing preferences.
 - Bound HTTP calls, batch polling and keep event/serial callbacks independent of network I/O.

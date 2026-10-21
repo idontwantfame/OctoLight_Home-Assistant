@@ -12,35 +12,53 @@ from scripts.check_release import check_release
 @pytest.fixture
 def artifacts(tmp_path):
     project = tmp_path / "pyproject.toml"
-    project.write_text('[project]\nversion = "0.3.0"\n')
+    project.write_text('[project]\nname = "OctoPrint-HA-Light-Control"\nversion = "0.3.0"\n')
     dist = tmp_path / "dist"
     dist.mkdir()
     return project, dist
 
 
-def build_artifacts(dist, wheel_version="0.3.0", source_version="0.3.0", omit=None):
+def build_artifacts(
+    dist,
+    wheel_version="0.3.0",
+    source_version="0.3.0",
+    omit=None,
+    distribution_name="OctoPrint-HA-Light-Control",
+    entrypoint="ha_light_control = octoprint_ha_light_control",
+    legacy_package=False,
+):
     required = (
         "__init__.py",
         "ha.py",
         "lighting.py",
         "gcode.py",
-        "templates/octolightHA_navbar.jinja2",
-        "templates/octolightHA_settings.jinja2",
-        "static/js/octolightHA.js",
-        "static/css/octolightHA.css",
+        "templates/ha_light_control_navbar.jinja2",
+        "templates/ha_light_control_settings.jinja2",
+        "static/js/ha_light_control.js",
+        "static/css/ha_light_control.css",
     )
-    entries = {"octoprint_octolightHA/" + name: b"" for name in required if name != omit}
+    entries = {"octoprint_ha_light_control/" + name: b"" for name in required if name != omit}
     with ZipFile(dist / "plugin.whl", "w") as archive:
         for name, content in entries.items():
             archive.writestr(name, content)
-        archive.writestr("plugin.dist-info/METADATA", "Version: " + wheel_version + "\n\n")
+        archive.writestr(
+            "plugin.dist-info/METADATA",
+            "Name: " + distribution_name + "\nVersion: " + wheel_version + "\n\n",
+        )
+        archive.writestr(
+            "plugin.dist-info/entry_points.txt", "[octoprint.plugin]\n" + entrypoint + "\n"
+        )
+        if legacy_package:
+            archive.writestr("octoprint_octolightHA/__init__.py", "")
     source = dict(
         entries,
         **{
             "README.md": b"README",
             "LICENSE": b"License",
             "pyproject.toml": b"",
-            "PKG-INFO": ("Version: " + source_version + "\n\n").encode(),
+            "PKG-INFO": (
+                "Name: " + distribution_name + "\nVersion: " + source_version + "\n\n"
+            ).encode(),
         },
     )
     with tarfile.open(dist / "plugin.tar.gz", "w:gz") as archive:
@@ -73,7 +91,7 @@ def test_artifact_versions_must_match_project(artifacts, option):
 
 def test_missing_ui_asset_is_rejected(artifacts):
     project, dist = artifacts
-    build_artifacts(dist, omit="static/js/octolightHA.js")
+    build_artifacts(dist, omit="static/js/ha_light_control.js")
     with pytest.raises(KeyError):
         check_release("v0.3.0", project, dist)
 
@@ -81,4 +99,19 @@ def test_missing_ui_asset_is_rejected(artifacts):
 def test_missing_artifacts_are_rejected(artifacts):
     project, dist = artifacts
     with pytest.raises(ValueError, match="exactly one"):
+        check_release("v0.3.0", project, dist)
+
+
+@pytest.mark.parametrize(
+    "option,expected",
+    [
+        ({"distribution_name": "OctoLight-Home-Assistant"}, "name"),
+        ({"entrypoint": "octolightHA = octoprint_octolightHA"}, "identity"),
+        ({"legacy_package": True}, "original plugin"),
+    ],
+)
+def test_original_plugin_identity_cannot_be_released(artifacts, option, expected):
+    project, dist = artifacts
+    build_artifacts(dist, **option)
+    with pytest.raises(ValueError, match=expected):
         check_release("v0.3.0", project, dist)

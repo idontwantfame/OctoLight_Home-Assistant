@@ -1,4 +1,4 @@
-"""Parse opt-in @OCTOLIGHT host commands without performing network I/O."""
+"""Parse opt-in @HALIGHT host commands without performing network I/O."""
 
 from .ha import HomeAssistantError, validate_entity
 from .lighting import brightness, rgb
@@ -9,7 +9,7 @@ def parse_atcommand(parameters):
     actions = {"on": "turn_on", "off": "turn_off", "toggle": "toggle", "set": "turn_on"}
     if not parts or parts[0].lower() not in actions:
         raise HomeAssistantError(
-            "Use @OCTOLIGHT on|off|toggle|set [entity_id] [brightness=75 color=#ff8000 flash=short]."
+            "Use @HALIGHT on|off|toggle|set [entity_id] [brightness=75 color=#ff8000 flash=short]."
         )
     verb = parts[0].lower()
     entity_id = None

@@ -5,20 +5,20 @@ import flask
 import pytest
 from octoprint.events import Events
 
-from octoprint_octolightHA import OctoLightHAPlugin
-from octoprint_octolightHA.ha import HomeAssistantError
+from octoprint_ha_light_control import HALightControlPlugin
+from octoprint_ha_light_control.ha import HomeAssistantError
 
 
 @pytest.fixture
 def plugin():
-    p = OctoLightHAPlugin()
+    p = HALightControlPlugin()
     p.config = dict(
         p.get_settings_defaults(),
         address="http://ha.local",
         api_key="secret",
         entity_id="light.printer",
     )
-    p._identifier = "octolightHA"
+    p._identifier = "ha_light_control"
     p._logger = logging.getLogger("test")
     p._plugin_manager = Mock()
     p._printer = Mock()
@@ -35,21 +35,27 @@ def app():
 
 
 def test_get_is_read_only(plugin, app):
-    with app.test_request_context("/"), patch("octoprint_octolightHA.Permissions") as permissions:
+    with (
+        app.test_request_context("/"),
+        patch("octoprint_ha_light_control.Permissions") as permissions,
+    ):
         permissions.STATUS.can.return_value = True
         with patch.object(plugin, "_client") as client:
             assert plugin.on_api_get(flask.request).json["state"] is None
             client.assert_not_called()
     with (
         app.test_request_context("/?action=toggle"),
-        patch("octoprint_octolightHA.Permissions") as permissions,
+        patch("octoprint_ha_light_control.Permissions") as permissions,
     ):
         permissions.STATUS.can.return_value = True
         assert plugin.on_api_get(flask.request)[1] == 405
 
 
 def test_commands_require_control(plugin, app):
-    with app.test_request_context("/"), patch("octoprint_octolightHA.Permissions") as permissions:
+    with (
+        app.test_request_context("/"),
+        patch("octoprint_ha_light_control.Permissions") as permissions,
+    ):
         permissions.CONTROL.can.return_value = False
         permissions.SETTINGS.can.return_value = False
         with pytest.raises(Exception) as error:
@@ -58,7 +64,10 @@ def test_commands_require_control(plugin, app):
 
 
 def test_discovery_requires_settings(plugin, app):
-    with app.test_request_context("/"), patch("octoprint_octolightHA.Permissions") as permissions:
+    with (
+        app.test_request_context("/"),
+        patch("octoprint_ha_light_control.Permissions") as permissions,
+    ):
         permissions.CONTROL.can.return_value = False
         permissions.SETTINGS.can.return_value = False
         with pytest.raises(Exception) as error:
@@ -225,10 +234,10 @@ def test_extra_entity_delay_validation(plugin):
 
 def test_gcode_is_opt_in_and_queued(plugin):
     with patch.object(plugin._executor, "submit") as submit:
-        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", "on")
+        plugin.process_atcommand(None, "queuing", "HALIGHT", "on")
         submit.assert_not_called()
         plugin.config["enableGcode"] = True
-        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", "off")
+        plugin.process_atcommand(None, "queuing", "HALIGHT", "off")
         submit.assert_called_once_with(
             plugin._queued_control, "turn_off", "light.printer", plugin._generation, {}
         )
@@ -240,7 +249,7 @@ def test_gcode_is_opt_in_and_queued(plugin):
 def test_gcode_rejects_invalid_targets(plugin, parameters):
     plugin.config["enableGcode"] = True
     with patch.object(plugin._executor, "submit") as submit:
-        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", parameters)
+        plugin.process_atcommand(None, "queuing", "HALIGHT", parameters)
         submit.assert_not_called()
 
 
@@ -284,7 +293,7 @@ def test_event_dispatch_and_cached_reads_do_not_wait_for_network_lock(plugin, ap
             submit.assert_called_once()
         with (
             app.test_request_context("/"),
-            patch("octoprint_octolightHA.Permissions") as permissions,
+            patch("octoprint_ha_light_control.Permissions") as permissions,
         ):
             permissions.STATUS.can.return_value = True
             assert plugin.on_api_get(flask.request).status_code == 200
@@ -332,7 +341,7 @@ def test_host_appearance_queues_capability_checked_control(plugin):
         patch.object(plugin, "_client") as client,
     ):
         plugin.process_atcommand(
-            None, "queuing", "OCTOLIGHT", "set light.room brightness=75 color=#ff8000 flash=short"
+            None, "queuing", "HALIGHT", "set light.room brightness=75 color=#ff8000 flash=short"
         )
         submit.assert_called_once_with(
             plugin._queued_control,
@@ -347,7 +356,7 @@ def test_host_appearance_queues_capability_checked_control(plugin):
 def test_host_commands_ignore_other_phases_and_names(plugin):
     plugin.config["enableGcode"] = True
     with patch.object(plugin._executor, "submit") as submit:
-        plugin.process_atcommand(None, "sending", "OCTOLIGHT", "on")
+        plugin.process_atcommand(None, "sending", "HALIGHT", "on")
         plugin.process_atcommand(None, "queuing", "OTHER", "on")
         submit.assert_not_called()
 
@@ -360,3 +369,91 @@ def test_queued_host_appearance_reaches_light_control(plugin):
         control.assert_called_once_with(
             "turn_on", "light.printer", {"brightness": 75, "color": "#ff8000"}
         )
+
+
+def prepare_legacy_import(plugin):
+    plugin.config = plugin.get_settings_defaults()
+    plugin._plugin_manager.get_plugin_info.return_value = None
+    plugin._settings = Mock()
+    plugin._settings.global_get.return_value = dict(
+        address="http://ha.local/",
+        api_key="secret",
+        entity_id="light.printer",
+        turnOnPrintStart=True,
+        unknown_legacy_marker="preserve",
+    )
+    plugin._settings.get_all_data.return_value = {}
+
+
+def test_legacy_import_is_explicit_filtered_and_does_not_touch_original(plugin):
+    prepare_legacy_import(plugin)
+    with patch.object(plugin, "reload_settings"):
+        plugin._import_legacy_settings()
+    plugin._settings.global_get.assert_called_once_with(["plugins", "octolightHA"])
+    persisted = plugin._settings.set.call_args.args
+    assert persisted[0] == []
+    assert persisted[1]["api_key"] == "secret"
+    assert persisted[1]["address"] == "http://ha.local"
+    assert persisted[1]["verify_certificate"] is False
+    assert "unknown_legacy_marker" not in persisted[1]
+    plugin._settings.global_set.assert_not_called()
+    plugin._settings.save.assert_called_once()
+
+
+def test_legacy_import_refuses_running_original(plugin):
+    prepare_legacy_import(plugin)
+    plugin._plugin_manager.get_plugin_info.return_value = Mock()
+    with pytest.raises(HomeAssistantError, match="Disable OctoLight"):
+        plugin._import_legacy_settings()
+    plugin._settings.global_get.assert_not_called()
+    plugin._settings.save.assert_not_called()
+
+
+def test_legacy_import_never_overwrites_configured_destination(plugin):
+    prepare_legacy_import(plugin)
+    plugin.config["address"] = "http://new.local"
+    with pytest.raises(HomeAssistantError, match="not be overwritten"):
+        plugin._import_legacy_settings()
+    plugin._settings.save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        None,
+        {},
+        {"address": "bad-url"},
+        {"address": "http://ha.local", "api_key": "secret", "entity_id": "desk_lamp"},
+    ],
+)
+def test_legacy_import_rejects_invalid_configuration(plugin, legacy):
+    prepare_legacy_import(plugin)
+    plugin._settings.global_get.return_value = legacy
+    with pytest.raises(HomeAssistantError):
+        plugin._import_legacy_settings()
+    plugin._settings.save.assert_not_called()
+
+
+def test_legacy_import_requires_settings_permission(plugin, app):
+    with (
+        app.test_request_context("/"),
+        patch("octoprint_ha_light_control.Permissions") as permissions,
+    ):
+        permissions.SETTINGS.can.return_value = False
+        with pytest.raises(Exception) as error:
+            plugin.on_api_command("importLegacy", {})
+        assert error.value.code == 403
+
+
+def test_original_host_command_is_not_claimed(plugin):
+    plugin.config["enableGcode"] = True
+    with patch.object(plugin._executor, "submit") as submit:
+        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", "on")
+        submit.assert_not_called()
+
+
+def test_update_identity_is_independent(plugin):
+    plugin._plugin_version = "0.3.0"
+    info = plugin.get_update_information()
+    assert set(info) == {"ha_light_control"}
+    assert info["ha_light_control"]["displayName"] == "Home Assistant Light Control"

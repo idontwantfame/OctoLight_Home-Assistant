@@ -1,5 +1,5 @@
 {
-  "name": "octolight-ha-ui-checks",
+  "name": "ha-light-control-ha-ui-checks",
   "private": true,
   "scripts": {
     "test": "node tests/browser.cjs"

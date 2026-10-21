@@ -1,4 +1,4 @@
-# OctoLight Home Assistant
+# Home Assistant Light Control
 
 Control Home Assistant lights and switches from OctoPrint, with brightness, colour,
 print status lighting and delayed shutoff. This is the maintained
@@ -21,20 +21,42 @@ In OctoPrint’s Plugin Manager, install this URL, then restart OctoPrint:
 https://github.com/idontwantfame/OctoLight_Home-Assistant/archive/refs/heads/master.zip
 ```
 
-An existing upstream installation uses the same plugin identifier, `octolightHA`,
-so its address, token, entity and print settings are retained. Install this fork over
-the existing plugin rather than running both. Existing implicit TLS verification
-settings are migrated; new installations enable certificate verification by default.
-Future automatic updates track **this fork’s GitHub releases**. Local commits and build
-artifacts are not published releases.
+This is a separate plugin with its own identity:
 
-**API migration:** GET requests no longer change the light. Integrations using
-`GET ?action=toggle`, `turnOn` or `turnOff` must switch to POST commands. This prevents
-clients such as Octopod from accidentally toggling lights while reading plugin data.
+| Identity | Value |
+| --- | --- |
+| Display name | Home Assistant Light Control |
+| OctoPrint identifier | `ha_light_control` |
+| Python package | `octoprint_ha_light_control` |
+| Distribution | `OctoPrint-HA-Light-Control` |
+| HTTP API | `/api/plugin/ha_light_control` |
+| Host command | `@HALIGHT` |
+
+The upstream plugin remains `octolightHA` and is not replaced or uninstalled.
+Both plugins can be installed, but avoid enabling duplicate automation for the same
+light. Each has its own settings, navbar bindings, API and host command.
+
+To migrate an existing OctoLight configuration:
+
+1. Disable **OctoLight Home Assistant** and restart OctoPrint.
+2. Open **Home Assistant Light Control** settings before entering new connection fields.
+3. Select **Import OctoLight settings**. Known settings are copied into this plugin;
+   the original configuration is left intact. Import refuses to overwrite a configured
+   destination or run while the original plugin is enabled.
+4. Update scripts from `@OCTOLIGHT` to `@HALIGHT` and API callers from
+   `/api/plugin/octolightHA` to `/api/plugin/ha_light_control`.
+
+Existing implicit TLS verification preferences are preserved when importing; new
+configurations verify certificates by default. Automatic updates track this fork’s
+GitHub releases. Local commits and build artifacts are not published releases.
+
+**API migration:** GET requests do not change lights. Integrations using
+`GET ?action=toggle`, `turnOn` or `turnOff` must switch to POST commands on the new
+endpoint. Plain GET safely reads cached state.
 
 ## Setup
 
-1. Open **Settings → OctoLight Home Assistant**.
+1. Open **Settings → Home Assistant Light Control**.
 2. Enter the Home Assistant URL, including `http://` or `https://` and its port when
    needed, for example `http://homeassistant.local:8123`. Trailing slashes are accepted.
 3. Enter a Home Assistant long-lived access token. The token is masked in the UI,
@@ -107,19 +129,19 @@ shutoff. On resume/start, the printing colour replaces the previous status colou
 
 ## OctoDash and G-code
 
-Enable **@OCTOLIGHT host commands** in settings, then use them in OctoDash custom
+Enable **@HALIGHT host commands** in settings, then use them in OctoDash custom
 actions, OctoPrint’s Terminal tab, G-code scripts or streamed G-code files:
 
 ```gcode
-@OCTOLIGHT on
-@OCTOLIGHT off
-@OCTOLIGHT toggle
-@OCTOLIGHT on light.room
-@OCTOLIGHT set brightness=75
-@OCTOLIGHT set color=#ff8000
-@OCTOLIGHT set light.room brightness=75 color=#ff8000
-@OCTOLIGHT set light.printer color=#ff0000 flash=short
-@OCTOLIGHT on brightness=100 color=#ffffff
+@HALIGHT on
+@HALIGHT off
+@HALIGHT toggle
+@HALIGHT on light.room
+@HALIGHT set brightness=75
+@HALIGHT set color=#ff8000
+@HALIGHT set light.room brightness=75 color=#ff8000
+@HALIGHT set light.printer color=#ff0000 flash=short
+@HALIGHT on brightness=100 color=#ffffff
 ```
 
 | Action | Behaviour |
@@ -143,11 +165,11 @@ intercepted by this plugin.
 
 ## HTTP API
 
-The endpoint is `/api/plugin/octolightHA`. Use a user/application API key with the
+The endpoint is `/api/plugin/ha_light_control`. Use a user/application API key with the
 required permissions, or an authenticated session with OctoPrint’s CSRF token.
 OctoPrint 2 clients should not rely on the removed global API key.
 
-`GET /api/plugin/octolightHA` returns cached state without sending a light command:
+`GET /api/plugin/ha_light_control` returns cached state without sending a light command:
 
 ```json
 {"state": true, "isLightOn": true, "entities": [{"entity_id": "light.printer", "isLightOn": true, "available": true}]}
@@ -179,7 +201,7 @@ when contacting Home Assistant and are omitted from plugin messages and command 
 ## Development and validation
 
 Builds use `pyproject.toml` and isolated setuptools; OctoPrint is not a build dependency.
-The package name, module and plugin identifier stay compatible with existing installations.
+The package name, module and plugin identifier are distinct from the upstream plugin.
 
 ```sh
 python -m pip install "OctoPrint==2.0.0rc7" ".[develop]"
@@ -201,7 +223,7 @@ colour/brightness payloads and polling against a disposable local OctoPrint serv
 
 ```sh
 python -m pip install --force-reinstall --no-deps dist/*.whl
-OCTOLIGHT_SERVER_TEST=1 python -m pytest tests/test_server.py -q
+HALIGHT_SERVER_TEST=1 python -m pytest tests/test_server.py -q
 ```
 
 This test uses temporary users, config, localhost ports and a simulated Home Assistant;
@@ -224,7 +246,10 @@ token; no PyPI token is needed. Review the draft and publish it when ready. For
 example, version `0.3.0` requires tag `v0.3.0`. No release is created by ordinary
 branch pushes. On a GitHub fork, enable Actions if GitHub has disabled them.
 
-Plugin-repository registration is a separate publishing step. See the
-[registration requirements](https://plugins.octoprint.org/help/registering/) before
-submitting a listing, including the required AI-assisted-development declaration.
+For a separate plugin-repository listing, register `ha_light_control` with the
+name **Home Assistant Light Control**, Python compatibility `>=3.9,<4`, and the
+tested OctoPrint range `>=1.11.8,<3`. Use this fork’s source and release archive,
+enable its GitHub Issues, and include current screenshots and the required
+`ai-developed` attribute. See the
+[registration requirements](https://plugins.octoprint.org/help/registering/).
 No listing or release has been published from this working repository.

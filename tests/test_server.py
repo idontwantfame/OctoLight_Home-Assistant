@@ -14,8 +14,8 @@ import requests
 import yaml
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("OCTOLIGHT_SERVER_TEST") != "1",
-    reason="set OCTOLIGHT_SERVER_TEST=1 for live server check",
+    os.environ.get("HALIGHT_SERVER_TEST") != "1",
+    reason="set HALIGHT_SERVER_TEST=1 for live server check",
 )
 
 
@@ -32,7 +32,8 @@ def wait_for(check, timeout=30):
     pytest.fail("Timed out waiting for local test server")
 
 
-def test_real_octoprint_api(tmp_path):
+@pytest.mark.parametrize("legacy_enabled", [False, True])
+def test_real_octoprint_api(tmp_path, legacy_enabled):
     class HA(BaseHTTPRequestHandler):
         state = "off"
         calls = []
@@ -78,6 +79,13 @@ def test_real_octoprint_api(tmp_path):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
+    legacy = dict(
+        address="http://127.0.0.1:" + str(ha.server_port) + "/",
+        api_key="local-ha-test-token",
+        entity_id="light.printer",
+        pollInterval=5,
+        unknown_legacy_marker="preserve",
+    )
     config = {
         "server": {
             "firstRun": False,
@@ -85,7 +93,9 @@ def test_real_octoprint_api(tmp_path):
             "pluginBlacklist": {"enabled": False},
         },
         "plugins": {
+            "octolightHA": legacy,
             "_disabled": [
+                "octolightHA",
                 "discovery",
                 "tracking",
                 "announcements",
@@ -95,9 +105,25 @@ def test_real_octoprint_api(tmp_path):
                 "pluginmanager",
                 "health_check",
                 "healthcheck",
-            ]
+            ],
         },
     }
+    # An independent legacy plugin proves that loading/routing the fork does not
+    # replace the original identifier. It does not contact Home Assistant.
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+    (plugins / "octolightHA.py").write_text(
+        "import flask\nimport octoprint.plugin\n"
+        "class Legacy(octoprint.plugin.SimpleApiPlugin):\n"
+        "    def is_api_protected(self): return True\n"
+        '    def on_api_get(self, request): return flask.jsonify(plugin="octolightHA")\n'
+        '__plugin_pythoncompat__ = ">=3.9,<4"\n'
+        "def __plugin_load__():\n"
+        "    global __plugin_implementation__\n"
+        "    __plugin_implementation__ = Legacy()\n"
+    )
+    if legacy_enabled:
+        config["plugins"]["_disabled"].remove("octolightHA")
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(config))
     command = [sys.executable, "-m", "octoprint", "-b", str(tmp_path)]
     for name, group in (("admin", "admins"), ("reader", "readonly")):
@@ -117,7 +143,7 @@ def test_real_octoprint_api(tmp_path):
     base = "http://127.0.0.1:" + str(port)
     try:
         wait_for(lambda: requests.get(base + "/api/version", timeout=1).status_code in (200, 403))
-        assert requests.get(base + "/api/plugin/octolightHA", timeout=5).status_code == 403
+        assert requests.get(base + "/api/plugin/ha_light_control", timeout=5).status_code == 403
 
         def login(name):
             session = requests.Session()
@@ -135,9 +161,31 @@ def test_real_octoprint_api(tmp_path):
 
         admin = login("admin")
         reader = login("reader")
-        api = base + "/api/plugin/octolightHA"
+        api = base + "/api/plugin/ha_light_control"
+        asset = admin.get(
+            base + "/plugin/ha_light_control/static/js/ha_light_control.js", timeout=5
+        )
+        assert asset.status_code == 200
+        assert 'simpleApiCommand("ha_light_control"' in asset.text
         assert reader.post(api, json={"command": "turnOn"}, timeout=5).status_code == 403
         assert reader.post(api, json={"command": "discover"}, timeout=5).status_code == 403
+        assert reader.post(api, json={"command": "importLegacy"}, timeout=5).status_code == 403
+        if legacy_enabled:
+            original_api = base + "/api/plugin/octolightHA"
+            assert admin.get(original_api, timeout=5).json() == {"plugin": "octolightHA"}
+            rejected = admin.post(api, json={"command": "importLegacy"}, timeout=5)
+            assert rejected.status_code == 400
+            assert "Disable OctoLight" in rejected.json()["error"]
+        else:
+            imported = admin.post(api, json={"command": "importLegacy"}, timeout=5)
+            assert imported.status_code == 200, imported.text
+            assert imported.json() == {"imported": True}
+            assert "local-ha-test-token" not in imported.text
+            persisted = yaml.safe_load((tmp_path / "config.yaml").read_text())
+            assert persisted["plugins"]["octolightHA"] == legacy
+            assert persisted["plugins"]["ha_light_control"]["verify_certificate"] is False
+            assert "unknown_legacy_marker" not in persisted["plugins"]["ha_light_control"]
+            assert admin.post(api, json={"command": "importLegacy"}, timeout=5).status_code == 400
         connection = dict(
             address="http://127.0.0.1:" + str(ha.server_port) + "/",
             api_key="local-ha-test-token",
@@ -152,7 +200,7 @@ def test_real_octoprint_api(tmp_path):
         )
         assert missing.status_code == 400 and "not found" in missing.json()["error"]
         saved = admin.post(
-            base + "/api/settings", json={"plugins": {"octolightHA": connection}}, timeout=10
+            base + "/api/settings", json={"plugins": {"ha_light_control": connection}}, timeout=10
         )
         assert saved.status_code == 200, saved.text
         wait_for(lambda: admin.get(api, timeout=5).json()["state"] is False)
@@ -170,8 +218,14 @@ def test_real_octoprint_api(tmp_path):
         HA.state = "off"
         wait_for(lambda: reader.get(api, timeout=5).json()["state"] is False, timeout=10)
         restricted = reader.get(base + "/api/settings", timeout=5).json()
-        assert restricted["plugins"]["octolightHA"]["api_key"] is None
+        assert restricted["plugins"]["ha_light_control"]["api_key"] is None
         assert "local-ha-test-token" not in (tmp_path / "logs/octoprint.log").read_text()
+        assert (
+            yaml.safe_load((tmp_path / "config.yaml").read_text())["plugins"]["octolightHA"]
+            == legacy
+        )
+        if legacy_enabled:
+            assert admin.get(original_api, timeout=5).json() == {"plugin": "octolightHA"}
     finally:
         server.terminate()
         try:

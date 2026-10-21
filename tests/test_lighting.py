@@ -1,7 +1,7 @@
 import pytest
 
-from octoprint_octolightHA.ha import HomeAssistantError
-from octoprint_octolightHA.lighting import brightness, capabilities, light_attributes, rgb
+from octoprint_ha_light_control.ha import HomeAssistantError
+from octoprint_ha_light_control.lighting import brightness, capabilities, light_attributes, rgb
 
 
 @pytest.mark.parametrize(

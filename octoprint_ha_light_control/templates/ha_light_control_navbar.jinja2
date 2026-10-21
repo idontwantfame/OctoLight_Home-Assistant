@@ -1,14 +1,14 @@
 <!-- ko foreach: entities -->
-<span class="dropdown octolight-control" data-bind="attr: {'data-octolight-entity': entity_id}">
-<a href="#" class="octolight-indicator" role="button" data-bind="click: $root.toggle,
+<span class="dropdown ha-light-control-control" data-bind="attr: {'data-ha-light-control-entity': entity_id}">
+<a href="#" class="ha-light-control-indicator" role="button" data-bind="click: $root.toggle,
     css: {off: !isLightOn(), unavailable: !available()},
     attr: {title: (name() || entity_id) + (error() ? ': ' + error() : (available() ? (isLightOn() ? ': on' : ': off') : ': unavailable')),
            'aria-label': 'Toggle ' + (name() || entity_id),
            'aria-disabled': !$root.canControl() || $root.busy(), 'aria-pressed': !!isLightOn()}">
     <i data-bind="css: icon() === 'power-off' ? 'fa fa-power-off' : 'fa fa-lightbulb-o'"></i>
 </a>
-<a href="#" class="dropdown-toggle octolight-menu-toggle" data-toggle="dropdown" role="button" aria-label="Light controls"><span class="caret"></span></a>
-<div class="dropdown-menu octolight-live" data-bind="click: function() {return true;}, clickBubble: false">
+<a href="#" class="dropdown-toggle ha-light-control-menu-toggle" data-toggle="dropdown" role="button" aria-label="Light controls"><span class="caret"></span></a>
+<div class="dropdown-menu ha-light-control-live" data-bind="click: function() {return true;}, clickBubble: false">
     <strong data-bind="text: name() || entity_id"></strong>
     <p role="status" data-bind="text: error"></p>
     <!-- ko if: capabilities().brightness -->

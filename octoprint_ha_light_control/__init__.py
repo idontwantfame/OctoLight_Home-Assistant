@@ -13,7 +13,7 @@ from .ha import HomeAssistant, HomeAssistantError, validate_entity, validate_sta
 from .lighting import brightness, capabilities, light_attributes, rgb
 
 
-class OctoLightHAPlugin(
+class HALightControlPlugin(
     octoprint.plugin.AssetPlugin,
     octoprint.plugin.StartupPlugin,
     octoprint.plugin.ShutdownPlugin,
@@ -33,7 +33,7 @@ class OctoLightHAPlugin(
         self._generation = 0
         self._print_generation = 0
         self._running = False
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="octolight")
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ha-light-control")
 
     def get_settings_defaults(self):
         return dict(
@@ -202,7 +202,7 @@ class OctoLightHAPlugin(
             # Validate per-entity overrides with the same limits as the primary.
             override = dict(config, **entity)
             override["additionalEntities"] = []
-            OctoLightHAPlugin._validate_settings(override)
+            HALightControlPlugin._validate_settings(override)
 
     def get_template_configs(self):
         return [
@@ -214,7 +214,7 @@ class OctoLightHAPlugin(
         return True
 
     def get_assets(self):
-        return dict(js=["js/octolightHA.js"], css=["css/octolightHA.css"])
+        return dict(js=["js/ha_light_control.js"], css=["css/ha_light_control.css"])
 
     def _client(self, config=None):
         config = self.config if config is None else config
@@ -343,7 +343,7 @@ class OctoLightHAPlugin(
         with self._lock:
             self._running = True
             self._schedule_poll(0)
-        self._logger.info("OctoLight Home Assistant started")
+        self._logger.info("Home Assistant Light Control started")
 
     def _cancel_idle(self, entity_id=None):
         with self._timer_lock:
@@ -416,7 +416,32 @@ class OctoLightHAPlugin(
         return True
 
     def get_api_commands(self):
-        return dict(toggle=[], turnOn=[], turnOff=[], setLight=[], discover=[], test=[])
+        return dict(
+            toggle=[], turnOn=[], turnOff=[], setLight=[], discover=[], test=[], importLegacy=[]
+        )
+
+    def _import_legacy_settings(self):
+        with self._lock:
+            if self._plugin_manager.get_plugin_info("octolightHA", require_enabled=True):
+                raise HomeAssistantError(
+                    "Disable OctoLight Home Assistant and restart OctoPrint before importing its settings."
+                )
+            if any(self.config.get(key) for key in ("address", "api_key", "entity_id")):
+                raise HomeAssistantError(
+                    "Import is available only before configuring this plugin. Existing settings will not be overwritten."
+                )
+            legacy = self._settings.global_get(["plugins", "octolightHA"])
+            if not isinstance(legacy, dict) or not legacy.get("address"):
+                raise HomeAssistantError(
+                    "No saved OctoLight Home Assistant configuration was found."
+                )
+            # Only copy recognized values; never alter the other plugin's namespace.
+            data = {key: legacy[key] for key in self.get_settings_defaults() if key in legacy}
+            data.setdefault("verify_certificate", False)
+            data = self._validated_settings(data)
+            octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
+            self._settings.save()
+            self.reload_settings()
 
     def on_api_get(self, request):
         if not Permissions.STATUS.can():
@@ -426,13 +451,16 @@ class OctoLightHAPlugin(
         return flask.jsonify(self._snapshot())
 
     def on_api_command(self, command, data):
-        if command in ("discover", "test"):
+        if command in ("discover", "test", "importLegacy"):
             if not Permissions.SETTINGS.can():
                 flask.abort(403)
         elif not Permissions.CONTROL.can():
             flask.abort(403)
         try:
             with self._lock:
+                if command == "importLegacy":
+                    self._import_legacy_settings()
+                    return flask.jsonify(imported=True)
                 if command in ("discover", "test"):
                     # Unsaved connection fields allow setup without a save/reload cycle.
                     config = dict(self.config)
@@ -588,8 +616,8 @@ class OctoLightHAPlugin(
 
     def get_update_information(self):
         return dict(
-            octolightHA=dict(
-                displayName="OctoLight Home Assistant",
+            ha_light_control=dict(
+                displayName="Home Assistant Light Control",
                 displayVersion=self._plugin_version,
                 type="github_release",
                 user="idontwantfame",
@@ -601,7 +629,7 @@ class OctoLightHAPlugin(
 
     def process_atcommand(self, comm, phase, command, parameters, tags=None, *args, **kwargs):
         """Queue host light controls without blocking OctoPrint's serial dispatcher."""
-        if command != "OCTOLIGHT" or phase != "queuing":
+        if command != "HALIGHT" or phase != "queuing":
             return
         with self._timer_lock:
             if not self._running or not self.config.get("enableGcode"):
@@ -626,13 +654,13 @@ class OctoLightHAPlugin(
                 self._logger.warning("Lighting command failed: %s", error)
 
 
-__plugin_name__ = "OctoLight Home Assistant"
+__plugin_name__ = "Home Assistant Light Control"
 __plugin_pythoncompat__ = ">=3.9,<4"
 
 
 def __plugin_load__():
     global __plugin_implementation__, __plugin_hooks__
-    __plugin_implementation__ = OctoLightHAPlugin()
+    __plugin_implementation__ = HALightControlPlugin()
     __plugin_hooks__ = {
         "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
         "octoprint.comm.protocol.atcommand.queuing": __plugin_implementation__.process_atcommand,
