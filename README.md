@@ -15,6 +15,16 @@ OctoPrint **2.0.0rc7** / Python 3.12, including real local server startup and AP
 OctoPrint 2 is currently verified against this release candidate; repeat the checks
 when upgrading to later releases. CI repeats these three environments.
 
+| Component | Requirement / listing compatibility | Validation |
+| --- | --- | --- |
+| Python | `>=3.9,<4` | 3.9, 3.10 and 3.12 |
+| OctoPrint | `>=1.11.8,<3` | 1.11.8 and 2.0.0rc7; later releases require verification |
+| Operating system | Linux | Linux CI and local Linux tests; Windows/macOS are not verified |
+| Home Assistant | States/services REST API and a long-lived access token | API simulator; no Home Assistant version or physical light is certified |
+
+Supported entity domains are `light`, `switch` and `input_boolean`. Brightness,
+RGB colour and short flashes depend on capabilities reported by each light.
+
 In OctoPrint’s Plugin Manager, install this URL, then restart OctoPrint:
 
 ```text
@@ -249,7 +259,11 @@ branch pushes. On a GitHub fork, enable Actions if GitHub has disabled them.
 For a separate plugin-repository listing, register `ha_light_control` with the
 name **Home Assistant Light Control**, Python compatibility `>=3.9,<4`, and the
 tested OctoPrint range `>=1.11.8,<3`. Use this fork’s source and release archive,
-enable its GitHub Issues, and include current screenshots and the required
-`ai-developed` attribute. See the
+enable its GitHub Issues, declare Linux as the verified operating system, and
+include current screenshots and the required `ai-developed` attribute. See the
 [registration requirements](https://plugins.octoprint.org/help/registering/).
+Before submission, publish the tested release, enable this fork’s Issues and
+replace the inherited screenshots with current UI images. Create the registration
+file in the plugin-repository project, using this README’s identity and support
+information; registration drafts are not kept in this working repository.
 No listing or release has been published from this working repository.
