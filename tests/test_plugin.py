@@ -196,3 +196,20 @@ def test_extra_entity_delay_validation(plugin):
     plugin.config["additionalEntities"] = [{"entity_id": "switch.room", "turnOffPrintDelay": -1}]
     with pytest.raises(HomeAssistantError, match="delay"):
         plugin._validate_settings(plugin.config)
+
+
+def test_gcode_is_opt_in_and_queued(plugin):
+    with patch.object(plugin._executor, "submit") as submit:
+        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", "on")
+        submit.assert_not_called()
+        plugin.config["enableGcode"] = True
+        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", "off")
+        submit.assert_called_once_with(plugin._queued_control, "turn_off", "light.printer", plugin._generation)
+
+
+@pytest.mark.parametrize("parameters", ["", "on switch.unconfigured", "invalid", "on light.printer extra"])
+def test_gcode_rejects_invalid_targets(plugin, parameters):
+    plugin.config["enableGcode"] = True
+    with patch.object(plugin._executor, "submit") as submit:
+        plugin.process_atcommand(None, "queuing", "OCTOLIGHT", parameters)
+        submit.assert_not_called()
