@@ -251,7 +251,8 @@ and browser-test dependencies weekly. Workflow changes are checked by actionlint
 
 Pushing a `v*` tag runs the same tests, verifies that the tag matches the version
 in `pyproject.toml`, checks distribution contents and creates a **draft** GitHub
-release with the wheel, source archive and SHA256 checksums. It uses GitHub’s built-in
+release with notes from the matching `CHANGELOG.md` entry, the wheel, source archive
+and SHA256 checksums. A missing or empty entry stops the release. It uses GitHub’s built-in
 token; no PyPI token is needed. Review the draft and publish it when ready. For
 example, version `0.3.0` requires tag `v0.3.0`. No release is created by ordinary
 branch pushes. On a GitHub fork, enable Actions if GitHub has disabled them.
